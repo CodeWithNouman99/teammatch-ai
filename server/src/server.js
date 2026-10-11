@@ -6,6 +6,7 @@ import authRoutes from "./routes/authRoutes.js";
 import developerRoutes from "./routes/developerRoutes.js";
 import projectRoutes from "./routes/projectRoutes.js";
 import allocationRoutes from "./routes/allocationRoutes.js";
+import requestRoutes from "./routes/requestRoutes.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -18,6 +19,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/developers", developerRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/allocations", allocationRoutes);
+app.use("/api/requests", requestRoutes);
 
 // These two must stay last
 app.use(notFound);
