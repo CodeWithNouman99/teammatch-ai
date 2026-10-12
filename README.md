@@ -78,4 +78,4 @@ npm run dev
 
 ## Author
 
-**Nouman Aslam**: [GitHub](https://github.com/CodeWithNouman99) · [LinkedIn](https://www.linkedin.com/in/nouman-aslam-a9a3a2333) · [Portfolio](https://portfolio-gilt-tau-48.vercel.app/)
+**Nouman Aslam**: [GitHub](https://github.com/CodeWithNouman99) · [LinkedIn](https://www.linkedin.com/in/nouman-aslam-a9a3a2333) · [Portfolio](https://nouman-aslam.vercel.app/)
