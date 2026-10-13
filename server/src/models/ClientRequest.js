@@ -20,6 +20,7 @@ const clientRequestSchema = new mongoose.Schema(
       startDate: Date,
       budget: Number,
       industry: String,
+            notes: String,
     },
     status: {
       type: String,

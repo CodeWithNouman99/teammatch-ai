@@ -14,6 +14,7 @@ const memberSchema = new mongoose.Schema(
 
 const optionSchema = new mongoose.Schema({
   label: { type: String, required: true },
+    summary: { type: String, default: "" },
   members: [memberSchema],
   gaps: [String],
   estimatedCost: { type: Number, min: 0 },

@@ -1,10 +1,10 @@
-
 import ClientRequest from "../models/ClientRequest.js";
 import AgentRun from "../models/AgentRun.js";
 import TeamProposal from "../models/TeamProposal.js";
+import { runTeamMatch } from "../services/teamMatch.js";
 
 // POST /api/requests
-// Saves the client's message. The AI agents will fill in the rest later.
+// Saves the client's message, then starts the AI agents in the background.
 export async function createRequest(req, res) {
   const { rawText, source } = req.body || {};
 
@@ -18,6 +18,10 @@ export async function createRequest(req, res) {
     status: "processing",
     createdBy: req.user.id, // comes from the token, set by the protect middleware
   });
+
+  // Start the AI agents in the background. We do not wait for them,
+  // so the user gets an answer straight away and the screen shows "Agents working".
+  runTeamMatch(request);
 
   res.status(201).json(request);
 }
