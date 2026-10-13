@@ -4,6 +4,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Requests from "./pages/Requests";
 import NewRequest from "./pages/NewRequest";
+import RequestDetail from "./pages/RequestDetail";
 import Developers from "./pages/Developers";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
       >
         <Route path="/requests" element={<Requests />} />
         <Route path="/requests/new" element={<NewRequest />} />
+                <Route path="/requests/:id" element={<RequestDetail />} />
         <Route path="/developers" element={<Developers />} />
       </Route>
 

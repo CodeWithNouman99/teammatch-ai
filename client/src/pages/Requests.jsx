@@ -49,15 +49,20 @@ export default function Requests() {
 
       {requests.length > 0 && (
         <ul className="mt-8 divide-y divide-line overflow-hidden rounded-lg border border-line bg-white">
-          {requests.map((request) => (
-            <li key={request._id} className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 p-5">
-              <div className="min-w-0 flex-1 basis-80">
-                <p className="line-clamp-2">{request.rawText}</p>
-                <p className="mt-1.5 text-sm text-muted">
-                  From {request.source}, added by {request.createdBy?.name || "unknown"} {timeAgo(request.createdAt)}
-                </p>
-              </div>
-              <StatusBadge status={request.status} />
+                   {requests.map((request) => (
+            <li key={request._id}>
+              <Link
+                to={`/requests/${request._id}`}
+                className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 p-5 hover:bg-paper"
+              >
+                <div className="min-w-0 flex-1 basis-80">
+                  <p className="line-clamp-2">{request.rawText}</p>
+                  <p className="mt-1.5 text-sm text-muted">
+                    From {request.source}, added by {request.createdBy?.name || "unknown"} {timeAgo(request.createdAt)}
+                  </p>
+                </div>
+                <StatusBadge status={request.status} />
+              </Link>
             </li>
           ))}
         </ul>
