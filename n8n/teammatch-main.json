@@ -1,0 +1,358 @@
+{
+  "name": "TeamMatch - Main",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "teammatch-request",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "09da0935-7a99-47af-9676-8d665c3e4161",
+      "name": "Webhook",
+      "webhookId": "5637a2fa-cc25-4a22-aa21-b62107d00c41"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.body.rawText }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"roles\": {\n      \"type\": \"array\",\n      \"description\": \"One entry for each kind of person the client asks for\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"role\": { \"type\": \"string\", \"description\": \"Job title, for example React Native Developer\" },\n          \"skills\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"description\": \"Skills this person needs, in lowercase\" },\n          \"seniority\": { \"type\": \"string\", \"enum\": [\"junior\", \"mid\", \"senior\", \"lead\", \"any\"] },\n          \"count\": { \"type\": \"number\", \"description\": \"How many people for this role\" }\n        },\n        \"required\": [\"role\", \"skills\", \"seniority\", \"count\"]\n      }\n    },\n    \"durationMonths\": { \"type\": \"number\", \"description\": \"How long the team is needed, in months\" },\n    \"startDate\": { \"type\": \"string\", \"description\": \"When the work should start, as YYYY-MM-DD\" },\n    \"budget\": { \"type\": \"number\", \"description\": \"Monthly budget in US dollars\" },\n    \"industry\": { \"type\": \"string\", \"description\": \"The client's industry in one or two lowercase words, for example fintech\" },\n    \"notes\": { \"type\": \"string\", \"description\": \"Any other condition that matters for choosing the team\" }\n  },\n  \"required\": [\"roles\"]\n}",
+        "options": {
+          "systemPromptTemplate": "=You read a message that a client sent to a software house and extract what team they are asking for.\n\nToday's date is {{ $now.toFormat('yyyy-MM-dd') }}. Use it to turn phrases like \"next month\" or \"from January\" into a real date.\n\nRules:\n- Make one entry in \"roles\" for each kind of person the client asks for. \"2 React Native developers and 1 Rails developer\" is two entries, with count 2 and count 1.\n- Write skills in lowercase and use these exact names when the client means them: react native, flutter, ruby on rails, node.js, python, django, laravel, react, next.js, vue, typescript, postgresql, mongodb, aws, docker, figma, test automation, machine learning, rag. \"Rails\" means ruby on rails. \"RN\" means react native. \"Node\" means node.js. For any other skill, write it the way developers normally write it, in lowercase.\n- seniority is junior, mid, senior or lead only when the client clearly asks for that level for that role. Otherwise use \"any\".\n- If a condition applies to the team as a whole and not to one role, for example \"at least one of them should be senior\", leave the roles as \"any\" and put the condition in \"notes\".\n- budget is the monthly budget in US dollars as a number. Leave it out if the client gives no budget.\n- Only extract what the message says. Leave out any field the message does not mention. Do not guess."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "4f86c0eb-42a0-4e5e-a64b-c6cc41814d09",
+      "name": "Requirement Agent",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        304,
+        240
+      ],
+      "id": "25ee727e-5fc7-48e9-bd07-648d4935b944",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "n3gpx9EThsRU9lpv",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tidy up what the AI extracted, so the next steps can rely on its shape\nconst extracted = $input.first().json.output || {};\nconst request = $('Webhook').first().json.body;\n\nconst roles = (extracted.roles || []).map((role) => ({\n  role: role.role,\n  skills: (role.skills || []).map((skill) => String(skill).toLowerCase().trim()),\n  seniority: role.seniority || 'any',\n  count: role.count || 1,\n}));\n\nreturn [\n  {\n    json: {\n      requestId: request.requestId,\n      parsed: {\n        roles,\n        durationMonths: extracted.durationMonths ?? null,\n        startDate: extracted.startDate ?? null,\n        budget: extracted.budget ?? null,\n        industry: extracted.industry ?? null,\n        notes: extracted.notes ?? '',\n      },\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ],
+      "id": "15186f17-7f65-40dc-83ad-b2afe59ace0b",
+      "name": "Clean Requirement"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2272,
+        0
+      ],
+      "id": "86947aa7-6c05-44bc-8456-505d5535891a",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn each role into one availability search: which skill, from which date, to which date\nconst { requestId, parsed } = $input.first().json;\n\n// Start date: what the client said, or today if they did not say\nconst today = new Date().toISOString().slice(0, 10);\nconst from = parsed.startDate || today;\n\n// End date: start date plus the number of months (6 if the client did not say)\nconst months = parsed.durationMonths || 6;\nconst toDate = new Date(from);\ntoDate.setUTCMonth(toDate.getUTCMonth() + months);\nconst to = toDate.toISOString().slice(0, 10);\n\n// One item per role, so the next node runs once for each role\nreturn parsed.roles.map((role) => ({\n  json: {\n    requestId,\n    role: role.role,\n    skill: role.skills[0] || '',\n    seniority: role.seniority,\n    count: role.count,\n    from,\n    to,\n  },\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "c459f812-9652-42a1-bfe5-2650b09695f0",
+      "name": "Prepare Search"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/api/developers/available",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "from",
+              "value": "={{ $json.from }}"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "skill",
+              "value": "={{ $json.skill }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "869d59fc-a2dc-4d3a-9bec-cae88a0724f8",
+      "name": "Check Availability",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UVzh4yg9mkUcCWr4",
+          "name": "TeamMatch API key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Put each developer back under the role they were searched for\nconst requirement = $('Clean Requirement').first().json;\nconst searches = $('Prepare Search').all().map((item) => item.json);\nconst developers = $input.all().map((item) => item.json);\n\nconst roles = searches.map((search) => {\n  const seen = new Set();\n\n  // Developers who have this role's skill, each one only once\n  const candidates = developers.filter((dev) => {\n    const hasSkill = !search.skill || dev.skills.some((skill) => skill.name === search.skill);\n    if (!hasSkill || seen.has(dev._id)) return false;\n    seen.add(dev._id);\n    return true;\n  });\n\n  return {\n    role: search.role,\n    skill: search.skill,\n    seniority: search.seniority,\n    count: search.count,\n    candidates: candidates.map((dev) => ({\n      id: dev._id,\n      name: dev.name,\n      title: dev.title,\n      seniority: dev.seniority,\n      hourlyRate: dev.hourlyRate,\n      freePercent: dev.freePercent,\n      availableFrom: dev.availableFrom,\n    })),\n  };\n});\n\nreturn [\n  {\n    json: {\n      requestId: requirement.requestId,\n      parsed: requirement.parsed,\n      from: searches[0]?.from,\n      to: searches[0]?.to,\n      roles,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "616b9fc9-3ddd-42b3-85fb-06fda765f8e4",
+      "name": "Group Candidates"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Give every candidate a match score out of 100, using simple rules we can explain\nconst data = $input.first().json;\nconst ONE_DAY = 24 * 60 * 60 * 1000;\nconst levels = ['junior', 'mid', 'senior', 'lead'];\n\n// Up to 70 points: free for the whole period gets the most\nfunction availabilityScore(candidate) {\n  if (candidate.freePercent === 100) return 70;\n  if (candidate.freePercent > 0) return Math.round((70 * candidate.freePercent) / 100);\n  // Busy now: lose 1 point for every day they are late\n  const daysLate = Math.ceil((new Date(candidate.availableFrom) - new Date(data.from)) / ONE_DAY);\n  return Math.max(0, 70 - daysLate);\n}\n\n// Up to 30 points: how well the seniority fits what the client asked for\nfunction seniorityScore(candidate, wanted) {\n  if (wanted === 'any') {\n    return { junior: 12, mid: 22, senior: 30, lead: 30 }[candidate.seniority] ?? 15;\n  }\n  const gap = Math.abs(levels.indexOf(candidate.seniority) - levels.indexOf(wanted));\n  if (gap === 0) return 30;\n  if (gap === 1) return 15;\n  return 0;\n}\n\nconst roles = data.roles.map((role) => ({\n  ...role,\n  candidates: role.candidates\n    .map((candidate) => ({\n      ...candidate,\n      matchScore: availabilityScore(candidate) + seniorityScore(candidate, role.seniority),\n    }))\n    .sort((a, b) => b.matchScore - a.matchScore),\n}));\n\nreturn [{ json: { ...data, roles } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        0
+      ],
+      "id": "d4c39a35-2cb5-4140-a6f4-206349a9b5b6",
+      "name": "Score Candidates"
+    },
+    {
+      "parameters": {
+        "text": "=Client's message:\n{{ $('Webhook').first().json.body.rawText }}\n\nClient's notes: {{ $json.parsed.notes }}\nMonthly budget in US dollars: {{ $json.parsed.budget }}\n\nRoles needed and the candidates for each role:\n{{ JSON.stringify($json.roles, null, 2) }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"options\": {\n      \"type\": \"array\",\n      \"description\": \"2 or 3 different team options, best first\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"label\": { \"type\": \"string\", \"description\": \"Short name, for example Best match or Lowest cost\" },\n          \"summary\": { \"type\": \"string\", \"description\": \"One sentence on what makes this option different\" },\n          \"members\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"id\": { \"type\": \"string\", \"description\": \"The candidate id, copied exactly\" },\n                \"role\": { \"type\": \"string\" },\n                \"reason\": { \"type\": \"string\", \"description\": \"One sentence on why this person was picked\" }\n              },\n              \"required\": [\"id\", \"role\", \"reason\"]\n            }\n          }\n        },\n        \"required\": [\"label\", \"summary\", \"members\"]\n      }\n    },\n    \"gaps\": {\n      \"type\": \"array\",\n      \"items\": { \"type\": \"string\" },\n      \"description\": \"Problems the client should know about\"\n    }\n  },\n  \"required\": [\"options\", \"gaps\"]\n}",
+        "options": {
+          "systemPromptTemplate": "You are the team lead at a software house. You build team options for a client request.\n\nRules:\n- Only pick people from the candidate lists. Copy each person's id exactly.\n- Each option must fill every role with exactly the number of people asked for (count). If a role has fewer good candidates than needed, use who you have and explain it in gaps.\n- A person can appear only once in the same option.\n- Prefer people with a higher matchScore. matchScore already includes availability and seniority, so do not make up your own score.\n- Respect the client's notes and budget. If the client asks for at least one senior, every option must include a senior or lead, or gaps must explain why that is not possible.\n- hourlyRate is in US dollars and one month is about 160 hours. If possible, make one option cheaper than the others.\n- Make the options clearly different, for example best match, lowest cost, or fastest start.\n- Write each reason in plain business English that a sales person could send to a client. Mention when the person is free and their seniority. Do not mention the matchScore number.\n- If nobody is free on time for a role, say so in gaps with the earliest date someone becomes free.\n- Do not mention cost, price or budget in the summary or reasons. The system calculates the cost itself."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        1696,
+        0
+      ],
+      "id": "4bec31b7-cf0d-49f9-86b9-c59906c78d34",
+      "name": "Team Lead Agent",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        1776,
+        240
+      ],
+      "id": "28b2b1fa-45d7-497a-ae25-ca21af733fbe",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "n3gpx9EThsRU9lpv",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the Team Lead's picks into the final proposal.\n// Names, scores and cost come from our own data, not from the AI.\nconst data = $('Score Candidates').first().json;\nconst teamLead = $input.first().json.output || {};\nconst HOURS_PER_MONTH = 160;\nconst budget = data.parsed.budget;\n\n// Every candidate by id, so each pick can be looked up\nconst candidatesById = {};\nfor (const role of data.roles) {\n  for (const candidate of role.candidates) {\n    candidatesById[candidate.id] = candidate;\n  }\n}\n\nconst options = (teamLead.options || []).map((option) => {\n  // Keep only people who really are in our candidate list\n  const members = (option.members || [])\n    .filter((member) => candidatesById[member.id])\n    .map((member) => {\n      const candidate = candidatesById[member.id];\n      return {\n        developer: candidate.id,\n        name: candidate.name,\n        title: candidate.title,\n        role: member.role,\n        matchScore: candidate.matchScore,\n        reason: member.reason,\n        availableFrom: candidate.availableFrom,\n        hourlyRate: candidate.hourlyRate,\n      };\n    });\n\n  const estimatedCost = members.reduce((total, member) => total + member.hourlyRate * HOURS_PER_MONTH, 0);\n  const gaps = [...(teamLead.gaps || [])];\n  if (budget && estimatedCost > budget) {\n    gaps.push(`This team costs about $${estimatedCost.toLocaleString('en-US')} per month, above the $${budget.toLocaleString('en-US')} budget.`);\n  }\n\n  return { label: option.label, summary: option.summary, members, estimatedCost, gaps };\n});\n\nreturn [{ json: { requestId: data.requestId, parsed: data.parsed, options } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        0
+      ],
+      "id": "b5d041d7-3431-421b-96db-e94a0bb76f47",
+      "name": "Build Proposal"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Requirement Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Requirement Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requirement Agent": {
+      "main": [
+        [
+          {
+            "node": "Clean Requirement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Requirement": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search": {
+      "main": [
+        [
+          {
+            "node": "Check Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability": {
+      "main": [
+        [
+          {
+            "node": "Group Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Candidates": {
+      "main": [
+        [
+          {
+            "node": "Score Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Candidates": {
+      "main": [
+        [
+          {
+            "node": "Team Lead Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Team Lead Agent": {
+      "main": [
+        [
+          {
+            "node": "Build Proposal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Team Lead Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Proposal": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c7e02f82-c566-47dc-8693-27113a7adb2c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "adc52e4aa86e9401f22612d0f4b523da7f9cc7dd17a0f52ebc09747fcea9c2b5"
+  },
+  "nodeGroups": [],
+  "id": "8bfjNty28DGPw0mc",
+  "tags": []
+}
